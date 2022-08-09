@@ -124,14 +124,20 @@ module.exports = {
                     }
                 },
                 {
-                    $match: {firstTeamId: req.body.firstTeamId, secondTeamId: req.body.secondTeamId,
-                            dateString: {$eq: req.body.date}}
+                    $match: {
+                        $or: [{firstTeamId: req.body.firstTeamId},{firstTeamId: req.body.secondTeamId},{secondTeamId: req.body.secondTeamId},{secondTeamId: req.body.firstTeamId}],
+                            dateString: {$eq: req.body.date}
+                    }
                 }
                
             ]).toArray()
 
             
-            req.body.date = new Date(req.body.date)
+            // req.body.date = new Date(req.body.date)
+
+            let datestr = req.body.date
+            darr = datestr.split("/")   
+            req.body.date = new Date(parseInt(darr[2]),parseInt(darr[1])-1,parseInt(darr[0])+1)
 
             if(data.length === 2 && !(isScheduled.length))
             {
@@ -217,22 +223,20 @@ module.exports = {
                         $or : [ {'firstTeamPlayers.playerID' : {$eq : req.body.playerID}}, {'secondTeamPlayers.playerID' : {$eq : req.body.playerID}} ]
                     }
                 },
-                // {
-                //     $project: {
-                //         firstTeamId:1, secondTeamId:1,venue:1,date:1,type:1,firstTeamScore:1,secondTeamScore:1,manofthematch:1,
-                //         playerInfo : {
-                //             $switch: {
-                //                 branches: [
-                //                    { case: {$eq: ["firstTeamPlayers.playerID",req.body.playerID]}, then: "One" },
-                //                    { case: {$eq: ["secondTeamPlayers.playerID",req.body.playerID]}, then: "Two" },
-                                   
-                //                 ],
-                //                 default: "Nothing"
-                //             }
-                //         }
-                        
-                //     }
-                // }                
+                {
+                    $project: {
+                        firstTeamId:1, secondTeamId:1,venue:1,date:1,type:1,firstTeamScore:1,secondTeamScore:1,manofthematch:1,
+                        playerInfo : {
+                            $concatArrays: [ "$firstTeamPlayers", "$secondTeamPlayers" ]
+                        }
+                    }
+                },
+                {$unwind: '$playerInfo'},
+                {
+                    $match:{
+                        'playerInfo.playerID': req.body.playerID
+                    }
+                }         
             ]).toArray()
 
             if(matchData.length)
