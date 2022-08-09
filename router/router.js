@@ -10,9 +10,9 @@ router.post('/create', BasicAuth, playersController.insertData)
 
 router.get('/list', requireAuth,playersController.readData)
 
-router.put('/update/:id', requireAuth, playersController.updateData)
+router.put('/update/:playerid', requireAuth, playersController.updateData)
 
-router.delete('/delete/:id', requireAuth, playersController.deleteData)
+router.delete('/delete/:playerid', requireAuth, playersController.deleteData)
 
 router.get('/getplayer', requireAuth, playersController.getPlayer)
 

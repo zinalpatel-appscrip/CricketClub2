@@ -52,42 +52,32 @@ module.exports = {
     },
     updateData : async (req, res) => {
         try{
-            const db = await dbConnect('teamDetails')
-            let data = await db.findOne({_id: new mongodb.ObjectId(req.body.teamID)})
+            const db = await dbConnect('playerDetails')
+            let data = await db.findOne({_id: new mongodb.ObjectId(req.params.playerid)})
             if(data)
             {
-                const subDB = await dbConnect('team'+data.name)
-                delete req.body.teamID
-
-                let result = await subDB.updateOne({_id: new mongodb.ObjectId(req.params.id)} , {$set: req.body})
+                let result = await db.updateOne({_id: new mongodb.ObjectId(req.params.playerid)} , {$set: req.body})
                 res.send(result)
             }
             else
-            {
-                res.send("This team does not exist")
-            }
+                res.send("This player does not exist")
         }
         catch(e){
             console.log(e)
         }
     },
     deleteData : async (req, res) => {
-        const db = await dbConnect('teamDetails')
+        const db = await dbConnect('playerDetails')
         
-        let data = await db.findOne({_id: new mongodb.ObjectId(req.headers.teamid)})
+        let data = await db.findOne({_id: new mongodb.ObjectId(req.params.playerid)})
         if(data)
         {
-            const subDB = await dbConnect('team'+data.name)
-
-            let result = await subDB.deleteOne({_id: new mongodb.ObjectId(req.params.id)})
-            if(result.acknowledged){
+            let result = await db.deleteOne({_id: new mongodb.ObjectId(req.params.playerid)})
+            if(result.acknowledged)
                 res.send(result)
-            }
         }
         else
-        {
             res.send("Data not found")
-        }
     },
     getPlayer : async (req, res) => {
         const db = await dbConnect('playerDetails')
@@ -121,111 +111,141 @@ module.exports = {
             const db = await dbConnect('teamDetails')
             let data = await db.find({$or : [ {_id: new mongodb.ObjectId(req.body.firstTeamId)} , {_id: new mongodb.ObjectId(req.body.secondTeamId)} ]}).toArray()
 
+            if(data.length != 2)
+                res.end("This team does not exist")
+            
+            
+            //check if match is already scheduled
+            const matchSchedule = await dbConnect('matchSchedule')
+            const isScheduled = await matchSchedule.aggregate([
+                {
+                    $addFields : {
+                        'dateString' : {$dateToString: {format:"%d/%m/%Y", date:"$date"}}
+                    }
+                },
+                {
+                    $match: {firstTeamId: req.body.firstTeamId, secondTeamId: req.body.secondTeamId,
+                            dateString: {$eq: req.body.date}}
+                }
+               
+            ]).toArray()
+
+            
             req.body.date = new Date(req.body.date)
 
-            if(data.length != 2)
+            if(data.length === 2 && !(isScheduled.length))
             {
-                res.send("This team does not exist")
-                return
-            }
-
-            if(data.length === 2 && (!(data[0].isSchedule || data[1].isSchedule)))
-            {
-                const subDB = await dbConnect('matchDetails')
+                const subDB = await dbConnect('matchSchedule')
+                // const db = await dbConnect('teamDetails')
                 const result = await subDB.insertMany([req.body])
 
                 // console.log(result)
         
-                if(result.acknowledged)
-                {
-                    let result = await db.updateOne({_id: new mongodb.ObjectId(req.body.firstTeamId)},{$set: {isSchedule:1,matchCount: data[0].matchCount + 1 }})
-                    let result2 = await db.updateOne({_id: new mongodb.ObjectId(req.body.secondTeamId)},{$set: {isSchedule:1,matchCount: data[1].matchCount + 1 }})
-                    
-                    // console.log(req.body.players)
-                    // for(let i=0; i<req.body.players.length; i++)
-                    // {
-                    //     let data = await db.findOne({_id: new mongodb.ObjectId(req.body.players[i].teamID)})
-                    //     const subDB = await dbConnect('team' + data.name)
-                    //     const data2 = await subDB.findOne({_id: new mongodb.ObjectId(req.body.players[i].playerID)})
-                    //     console.log(data2.matchIDs)
-                    //     const result  = subDB.updateOne({_id: new mongodb.ObjectId(req.body.players[i].playerID)},{$set: {matchIDs : data2.matchIDs.push('2')}})
-                    //     console.log(result)
-                    // }
+                // if(result.acknowledged)
+                // {
+                //     let result = await db.updateOne({_id: new mongodb.ObjectId(req.body.firstTeamId)})
+                //     let result2 = await db.updateOne({_id: new mongodb.ObjectId(req.body.secondTeamId)})
                     
                     res.send("Scheduled")
-
-                }
+                // }
             }
             else
-            {
                 res.send("Already Scheduled")
-            }
         }catch(e){
             console.log(e)
         }
     },
     updateScore : async (req, res) => {
-        const db = await dbConnect('teamDetails')
-        let data = await db.findOne({_id: new mongodb.ObjectId(req.body.teamID)})
+        const db = await dbConnect('playerDetails')
+        let data = await db.findOne({_id: new mongodb.ObjectId(req.body.playerID)})
 
         if(data)
         {
-            const subDB = await dbConnect('team'+data.name)
-            let playerData = await subDB.findOne({_id: new mongodb.ObjectId(req.body.playerID)})
-            let result = await subDB.updateOne({_id: new mongodb.ObjectId(req.body.playerID)} , {$set: {score: playerData.score + req.body.playerScore}})
-            let result2 = await db.updateOne({_id: new mongodb.ObjectId(req.body.teamID)} , {$set: {score: data.score + req.body.playerScore}})
-            res.send(result2)
+            const subDB = await dbConnect('matchSchedule')
+            const firstTeam = await subDB.aggregate([
+                {
+                    $match: {'firstTeamPlayers.playerID': req.body.playerID,
+                    _id: new mongodb.ObjectId(req.body.matchID)}
+                }
+            ]).toArray()
+
+            const secondTeam = await subDB.aggregate([
+                {
+                    $match: {'secondTeamPlayers.playerID': req.body.playerID,
+                    _id: new mongodb.ObjectId(req.body.matchID)}
+                }
+            ]).toArray()
+
+            // console.log(firstTeam)
+            // console.log(secondTeam)
+            let match = await subDB.findOne({_id: new mongodb.ObjectId(req.body.matchID)})
+
+            if(firstTeam.length)
+            {
+                // console.log("firstTeam")
+                let result = await subDB.updateOne({_id: new mongodb.ObjectId(req.body.matchID), 'firstTeamPlayers.playerID': req.body.playerID} , 
+                                                    {   $set: {firstTeamScore: match.firstTeamScore + req.body.playerScore},
+                                                        $inc: {'firstTeamPlayers.$.score' : req.body.playerScore}
+                                                  })
+                res.send(result)                                  
+            }
+            else if(secondTeam.length)
+            {
+                // console.log("secondTeam")
+                let result = await subDB.updateOne({_id: new mongodb.ObjectId(req.body.matchID), 'secondTeamPlayers.playerID': req.body.playerID} , 
+                                                    {   $set: {secondTeamScore: match.secondTeamScore + req.body.playerScore},
+                                                        $inc: {'secondTeamPlayers.$.score' : req.body.playerScore}
+                                                  })
+                res.send(result)  
+            }
         }
         else
-            res.send("This team does not exist")
+            res.send("This player does not exist")
     },
     matchHistory : async (req, res) => {
-        const db = await dbConnect('teamDetails')
-        let teamData = await db.findOne({_id: new mongodb.ObjectId(req.body.teamID)})
+        const db = await dbConnect('playerDetails')
+        let player = await db.findOne({_id: new mongodb.ObjectId(req.body.playerID)})
         
-        if(teamData)
+        if(player)
         {
-            const db = await dbConnect('matchDetails')
-            // const playerObjectID = req.body.playerID
-            // console.log(typeof req.body.playerID)
-            let data =await db.aggregate([
+            const db = await dbConnect('matchSchedule')
+         
+            let matchData =await db.aggregate([
                 {
-                    $lookup : {
-                        from: 'team' + teamData.name,
-                        localField: 'players.playerID',
-                        foreignField: '_id',
-                        as: 'matchHistory'
-                    },
-                },
-                {
-                    $match : {
-                        'players.playerID': new mongodb.ObjectId(req.body.playerID),
-                    }   
-                },
-                {$unwind: '$matchHistory'},
-                {
-                    $match: {'matchHistory._id': new mongodb.ObjectId(req.body.playerID)}
-                },
-                {
-                    $project: {
-                        firstTeamId:1,
-                        secondTeamId:1,
-                        venue:1,
-                        date:1,
-                        type:1,
-                        players:1,
-                        score: '$matchHistory.score'
+                    $match: {
+                        // _id: new mongodb.ObjectId(req.body.matchID),
+                        $or : [ {'firstTeamPlayers.playerID' : {$eq : req.body.playerID}}, {'secondTeamPlayers.playerID' : {$eq : req.body.playerID}} ]
                     }
-                }                
+                },
+                // {
+                //     $project: {
+                //         firstTeamId:1, secondTeamId:1,venue:1,date:1,type:1,firstTeamScore:1,secondTeamScore:1,manofthematch:1,
+                //         playerInfo : {
+                //             $switch: {
+                //                 branches: [
+                //                    { case: {$eq: ["firstTeamPlayers.playerID",req.body.playerID]}, then: "One" },
+                //                    { case: {$eq: ["secondTeamPlayers.playerID",req.body.playerID]}, then: "Two" },
+                                   
+                //                 ],
+                //                 default: "Nothing"
+                //             }
+                //         }
+                        
+                //     }
+                // }                
             ]).toArray()
-            res.send(data)
+
+            if(matchData.length)
+                res.send(matchData)
+            else
+                res.send("This player was not part of this match")
         }
         else
-            res.send("This team does not exist")
+            res.send("This player does not exist")
     },
     matchData : async (req, res) => {
         let currentDate = new Date()
-        const db = await dbConnect('matchDetails')
+        const db = await dbConnect('matchSchedule')
         if(req.body.time === 'live')
         {
             let liveMatchData =await db.aggregate([
@@ -233,8 +253,12 @@ module.exports = {
                     $match: {
                         $expr : {
                             $eq : [currentDate.toISOString().substr(0,10), {$dateToString: {format:"%Y-%m-%d", date:"$date"}}]
-                        }
-                    }
+                        },
+                        type: req.body.type,
+                        country: req.body.country
+                    
+                    },
+                    
                 }
             ]).toArray()
             res.send(liveMatchData)
@@ -246,7 +270,10 @@ module.exports = {
                     $match: {
                         $expr : {
                             $lt : [{$dateToString: {format:"%Y-%m-%d", date:"$date"}},currentDate.toISOString().substr(0,10)]
-                        }
+                        },
+                        type: req.body.type,
+                        country: req.body.country
+                        
                     }
                 }
             ]).toArray()
@@ -269,8 +296,10 @@ module.exports = {
                             },
                             {
                                 dateString : {$gt: currentDate.toISOString().substr(0,10)}
-                            }
-                        ]
+                            },
+                        ],
+                        type: req.body.type,
+                        country: req.body.country
                             
                     }
                 }
