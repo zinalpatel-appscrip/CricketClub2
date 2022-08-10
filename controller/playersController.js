@@ -310,5 +310,46 @@ module.exports = {
             ]).toArray()
             res.send(recentMatchData)
         }
+    },
+    getschedule : async (req,res) => {
+        try{
+            const db = await dbConnect('matchSchedule')
+            let id = ''
+            if(req.body.matchID)
+            {
+                id = req.body.matchID
+                let data = await db.aggregate([
+                    {
+                        $match : {
+                            _id: new mongodb.ObjectId(id)
+                        }
+                    },
+                    {
+                        $project: {
+                            firstTeamId:1 ,secondTeamId:1,venue:1,date:1,country:1,type:1
+                        }
+                    }
+                    
+                ]).toArray()
+                res.send(data)
+            }
+            else   
+            {
+                let data = await db.aggregate([
+                    {
+                        $project: {
+                            firstTeamId:1 ,secondTeamId:1,venue:1,date:1,country:1,type:1
+                        }
+                    }
+                ]).toArray()
+                res.send(data)
+            } 
+        }
+        catch(e)
+        {
+            console.log(e)
+        }
+        
+            
     }
 }

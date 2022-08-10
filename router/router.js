@@ -24,4 +24,6 @@ router.get('/history',  requireAuth,playersController.matchHistory)
 
 router.get('/matchdata', requireAuth, playersController.matchData)
 
+router.get('/getschedule', requireAuth, playersController.getschedule)
+
 module.exports = router
